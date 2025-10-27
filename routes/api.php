@@ -10,6 +10,7 @@ use App\Http\Controllers\PedidoExternoController;
 use App\Http\Controllers\SeguimientoPedidoController;
 use App\Http\Controllers\SeguimientoPagoController;
 use App\Http\Controllers\UsuarioController;
+use App\Http\Controllers\ComisionVentaController;
 
 
 
@@ -71,3 +72,10 @@ Route::middleware('auth.token')->group(function () {
     Route::delete('/usuarios/{id}', [UsuarioController::class, 'destroy']);
     Route::post('/usuarios/reset-password', [UsuarioController::class, 'resetPassword']);
 });
+
+// Listar comisiones ventas
+
+Route::get('/comision-ventas', [ComisionVentaController::class, 'index']);
+Route::post('/comision-ventas', [ComisionVentaController::class, 'store']);
+Route::put('/comision-ventas/{id}', [ComisionVentaController::class, 'update']);
+Route::get('/comision-ventas/user/{userId}', [ComisionVentaController::class, 'showByUser']);
