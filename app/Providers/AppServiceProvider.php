@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\EnsureFrontendRequestsAreStateful; // ← AÑADE ESTO
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -18,10 +19,9 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
+
     public function boot(): void
     {
-        Route::middleware('api')
-            ->prefix('api')
-            ->group(base_path('routes/api.php'));
+        //
     }
 }

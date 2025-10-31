@@ -1,5 +1,6 @@
 ﻿<?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ShopifyController;
 use App\Http\Controllers\PedidoEstadoController;
@@ -79,3 +80,20 @@ Route::get('/comision-ventas', [ComisionVentaController::class, 'index']);
 Route::post('/comision-ventas', [ComisionVentaController::class, 'store']);
 Route::put('/comision-ventas/{id}', [ComisionVentaController::class, 'update']);
 Route::get('/comision-ventas/user/{userId}', [ComisionVentaController::class, 'showByUser']);
+
+Route::get('/test-laravel', function () {
+    logger('RUTA DE PRUEBA ACCEDIDA', [
+        'ip' => request()->ip(),
+        'accept' => request()->header('Accept'),
+        'user_agent' => request()->header('User-Agent'),
+    ]);
+
+    return response()->json([
+        'mensaje' => '¡API Laravel 12 FUNCIONANDO!',
+        'hora' => now()->format('Y-m-d H:i:s'),
+        'ip' => request()->ip(),
+        'headers' => [
+            'accept' => request()->header('Accept'),
+        ],
+    ]);
+});
