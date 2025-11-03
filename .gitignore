@@ -6,9 +6,10 @@
 /storage/*.key
 /storage/pail
 /vendor
-# .env //Descubierto para que todos puedan ver el archivo de configuración
-# .env.backup
-# .env.production
+.env 
+.env.backup
+.env.production
+.env.development
 .phpactor.json
 .phpunit.result.cache
 Homestead.json

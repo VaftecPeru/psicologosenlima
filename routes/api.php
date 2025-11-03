@@ -52,9 +52,12 @@ Route::get('/seguimiento-pedido/vendedores', [SeguimientoPedidoController::class
 Route::get('/seguimiento-pedido/almacen', [SeguimientoPedidoController::class, 'getAlmacenSeguimientos']);
 Route::get('/seguimiento-pedido/delivery', [SeguimientoPedidoController::class, 'getDeliverySeguimientos']);
 Route::get('/seguimiento-pedido/{shopify_order_id}/historial', [SeguimientoPedidoController::class, 'historial']);
+Route::get('/seguimientos/ultimo-por-orden', [SeguimientoPedidoController::class, 'getUltimoSeguimientoPorOrden']);
+Route::get('/seguimientos/{shopify_order_id}/ultimo', [SeguimientoPedidoController::class, 'getUltimoEstadoPorOrden']);
 
 Route::get('/seguimiento-pago', [SeguimientoPagoController::class, 'index']);
 Route::get('/seguimiento-pago/historial/{shopify_order_id}', [SeguimientoPagoController::class, 'historial']);
+Route::get('/seguimiento-pago/ultimo/{shopify_order_id}', [SeguimientoPagoController::class, 'ultimo']);
 
 Route::post('/login', [UsuarioController::class, 'login']);
 

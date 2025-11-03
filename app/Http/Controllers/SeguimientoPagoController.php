@@ -34,4 +34,24 @@ class SeguimientoPagoController extends Controller
             'data' => $historial,
         ], 200);
     }
+
+    public function ultimo($shopify_order_id): JsonResponse
+    {
+        $ultimoPago = SeguimientoPago::where('shopify_order_id', $shopify_order_id)
+            ->with('responsable')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (!$ultimoPago) {
+            return response()->json([
+                'message' => 'No se encontró seguimiento de pago para este pedido.',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'message' => 'Último seguimiento de pago obtenido correctamente',
+            'data' => $ultimoPago,
+        ], 200);
+    }
 }

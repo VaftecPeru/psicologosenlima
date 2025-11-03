@@ -121,4 +121,44 @@ class SeguimientoPedidoController extends Controller
             'data' => $seguimientos,
         ], 200);
     }
+
+    public function getUltimoSeguimientoPorOrden(): JsonResponse
+    {
+        $ultimos = SeguimientoPedido::with(['responsable' => function ($query) {
+            $query->select('id', 'nombre_completo');
+        }])
+            ->whereIn('id', function ($query) {
+                $query->selectRaw('MAX(id)')
+                    ->from('seguimiento_pedido')
+                    ->groupBy('shopify_order_id');
+            })
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'message' => 'Último seguimiento por pedido obtenido correctamente',
+            'data' => $ultimos,
+        ], 200);
+    }
+    public function getUltimoEstadoPorOrden($shopify_order_id): JsonResponse
+    {
+        $ultimo = SeguimientoPedido::with(['responsable' => function ($query) {
+            $query->select('id', 'nombre_completo');
+        }])
+            ->where('shopify_order_id', $shopify_order_id)
+            ->latest('created_at') // o latest('id') si prefieres por ID
+            ->first();
+
+        if (!$ultimo) {
+            return response()->json([
+                'message' => 'No se encontró seguimiento para este pedido',
+                'data' => null
+            ], 404);
+        }
+
+        return response()->json([
+            'message' => 'Último estado obtenido correctamente',
+            'data' => $ultimo
+        ], 200);
+    }
 }

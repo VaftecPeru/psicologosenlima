@@ -8,18 +8,13 @@ use Illuminate\Routing\Controller;
 
 class ComisionVentaController extends Controller
 {
-    /**
-     * Listar todos los registros de comisiones.
-     */
+
     public function index()
     {
         $comisiones = ComisionVenta::all();
         return response()->json($comisiones);
     }
 
-    /**
-     * Guardar un nuevo registro de comisión.
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -32,9 +27,6 @@ class ComisionVentaController extends Controller
         return response()->json($comision, 201);
     }
 
-    /**
-     * Actualizar un registro de comisión por su ID.
-     */
     public function update(Request $request, $id)
     {
         $request->validate([
@@ -47,9 +39,6 @@ class ComisionVentaController extends Controller
         return response()->json($comision);
     }
 
-    /**
-     * Obtener comisión por user_id (para fetch en frontend).
-     */
     public function showByUser($userId)
     {
         $comision = ComisionVenta::where('user_id', $userId)->first();
