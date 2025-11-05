@@ -1,0 +1,75 @@
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ShopifyController;
+use App\Http\Controllers\SeguimientoPedidoController;
+use App\Http\Controllers\SeguimientoPagoController;
+use App\Http\Controllers\ComisionVentaController;
+use App\Http\Controllers\PedidoEstadoController;
+use App\Http\Controllers\PedidoExternoController;
+use App\Http\Controllers\PedidoInternoController;
+use App\Http\Controllers\UsuarioController;
+
+
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+});
+
+Route::get('/shopify/orders', [ShopifyController::class, 'getOrders']);
+Route::get('/shopify/orders/{orderId}.json', [ShopifyController::class, 'getOrderById']);
+
+//rutas del api estado de pedidos
+Route::post('/estado-pedido', [PedidoEstadoController::class, 'actualizarEstado']);
+Route::get('/estado-pedido/{shopify_order_id}', [PedidoEstadoController::class, 'obtenerEstado']);
+Route::get('/estado-pedido-todos', [PedidoEstadoController::class, 'listarEstados']);
+
+
+// Rutas para pedidos interno
+
+Route::post('/pedido-interno', [PedidoInternoController::class, 'storeOrUpdate']);
+Route::put('/pedido-interno/{shopify_order_id}', [PedidoInternoController::class, 'storeOrUpdate']);
+Route::get('/pedido-interno/shopify/{shopify_order_id}', [PedidoInternoController::class, 'showByShopifyId']);
+
+// Rutas para pedidos externo
+Route::post('/pedido-externo', [PedidoExternoController::class, 'storeOrUpdate']);
+Route::put('/pedido-externo/{shopify_order_id}', [PedidoExternoController::class, 'storeOrUpdate']);
+Route::post('/pedido-externo-envio', [PedidoExternoController::class, 'storeOrUpdateEnvio']);
+Route::put('/pedido-externo-envio/{shopify_order_id}', [PedidoExternoController::class, 'storeOrUpdateEnvio']);
+Route::get('/pedido-externo/shopify/{shopify_order_id}', [PedidoExternoController::class, 'showByShopifyId']);
+
+Route::get('/seguimiento-pago', [SeguimientoPagoController::class, 'index']);
+Route::get('/seguimiento-pago/historial/{shopify_order_id}', [SeguimientoPagoController::class, 'historial']);
+Route::get('/seguimiento-pago/ultimo/{shopify_order_id}', [SeguimientoPagoController::class, 'ultimo']);
+
+
+Route::post('/seguimiento-pedido', [SeguimientoPedidoController::class, 'store']);
+Route::get('/seguimiento-pedido/administracion', [SeguimientoPedidoController::class, 'getAdministracionSeguimientos']);
+Route::get('/seguimiento-pedido/vendedores', [SeguimientoPedidoController::class, 'getVentasSeguimientos']);
+Route::get('/seguimiento-pedido/almacen', [SeguimientoPedidoController::class, 'getAlmacenSeguimientos']);
+Route::get('/seguimiento-pedido/delivery', [SeguimientoPedidoController::class, 'getDeliverySeguimientos']);
+Route::get('/seguimiento-pedido/{shopify_order_id}/historial', [SeguimientoPedidoController::class, 'historial']);
+Route::get('/seguimientos/ultimo-por-orden', [SeguimientoPedidoController::class, 'getUltimoSeguimientoPorOrden']);
+Route::get('/seguimientos/{shopify_order_id}/ultimo', [SeguimientoPedidoController::class, 'getUltimoEstadoPorOrden']);
+
+// Listar comisiones ventas
+
+Route::get('/comision-ventas', [ComisionVentaController::class, 'index']);
+Route::post('/comision-ventas', [ComisionVentaController::class, 'store']);
+Route::put('/comision-ventas/{id}', [ComisionVentaController::class, 'update']);
+Route::get('/comision-ventas/user/{userId}', [ComisionVentaController::class, 'showByUser']);
+
+
+Route::post('/login', [UsuarioController::class, 'login']);
+Route::post('/logout', [UsuarioController::class, 'logout']);
+Route::get('/usuario', [UsuarioController::class, 'showAuthUser']);
+
+Route::get('/usuarios', [UsuarioController::class, 'index']);
+Route::get('/usuarios/vendedores', [UsuarioController::class, 'vendedores']);
+Route::get('/usuarios/almacen', [UsuarioController::class, 'almacen']);
+Route::get('/usuarios/delivery', [UsuarioController::class, 'delivery']);
+Route::post('/usuarios', [UsuarioController::class, 'store']);
+Route::put('/usuarios/{id}', [UsuarioController::class, 'update']);
+Route::delete('/usuarios/{id}', [UsuarioController::class, 'destroy']);
+Route::post('/usuarios/reset-password', [UsuarioController::class, 'resetPassword']);
+Route::post('/register', [UsuarioController::class, 'register']);
