@@ -158,22 +158,16 @@ class UsuarioController extends Controller
         try {
             $request->validate([
                 'correo' => 'required|email|exists:usuarios,correo',
+                'nueva_contraseña' => 'required|string|min:8',
             ]);
 
-            $status = Password::sendResetLink(
-                $request->only('correo')
-            );
-
-            if ($status === Password::RESET_LINK_SENT) {
-                return response()->json([
-                    'message' => 'Enlace de restablecimiento de contraseña enviado correctamente',
-                ], 200);
-            }
+            $usuario = Usuario::where('correo', $request->correo)->firstOrFail();
+            $usuario->contraseña = Hash::make($request->nueva_contraseña);
+            $usuario->save();
 
             return response()->json([
-                'message' => 'No se pudo enviar el enlace de restablecimiento',
-                'error' => __($status),
-            ], 400);
+                'message' => 'Contraseña actualizada correctamente',
+            ], 200);
         } catch (ValidationException $e) {
             return response()->json([
                 'message' => 'Error de validación',
@@ -181,7 +175,7 @@ class UsuarioController extends Controller
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error al procesar la solicitud',
+                'message' => 'Error al cambiar contraseña',
                 'error' => $e->getMessage(),
             ], 500);
         }

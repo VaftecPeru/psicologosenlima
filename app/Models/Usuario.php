@@ -39,9 +39,4 @@ class Usuario extends Authenticatable
     {
         return $this->belongsTo(Rol::class, 'rol_id');
     }
-    
-    public function setContraseñaAttribute($value)
-    {
-        $this->attributes['contraseña'] = bcrypt($value);
-    }
 }
