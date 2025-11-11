@@ -10,7 +10,7 @@ use App\Http\Controllers\PedidoEstadoController;
 use App\Http\Controllers\PedidoExternoController;
 use App\Http\Controllers\PedidoInternoController;
 use App\Http\Controllers\UsuarioController;
-
+use App\Http\Controllers\ProductoController;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -18,6 +18,17 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 Route::get('/shopify/orders', [ShopifyController::class, 'getOrders']);
 Route::get('/shopify/orders/{orderId}.json', [ShopifyController::class, 'getOrderById']);
+Route::get('/shopify/products', [ShopifyController::class, 'getProducts']);
+Route::get('/shopify/products/{orderId}.json', [ShopifyController::class, 'getProductById']);
+Route::get('/shopify/syncAllProducts', [ShopifyController::class, 'syncAllProducts']);
+
+Route::get('/productos', [ProductoController::class, 'index']);        // Listar + buscar
+Route::get('/productos/{id}', [ProductoController::class, 'show']);     // Ver uno
+Route::post('/productos', [ProductoController::class, 'store']);       // Crear
+Route::put('/productos/{id}', [ProductoController::class, 'update']);   // Actualizar
+Route::delete('/productos/{id}', [ProductoController::class, 'destroy']); // Eliminar
+
+
 
 //rutas del api estado de pedidos
 Route::post('/estado-pedido', [PedidoEstadoController::class, 'actualizarEstado']);
