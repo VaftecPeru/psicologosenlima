@@ -20,14 +20,15 @@ Route::get('/shopify/orders', [ShopifyController::class, 'getOrders']);
 Route::get('/shopify/orders/{orderId}.json', [ShopifyController::class, 'getOrderById']);
 Route::get('/shopify/products', [ShopifyController::class, 'getProducts']);
 Route::get('/shopify/products/{orderId}.json', [ShopifyController::class, 'getProductById']);
-Route::get('/shopify/syncAllProducts', [ShopifyController::class, 'syncAllProducts']);
 
-Route::get('/productos', [ProductoController::class, 'index']);        // Listar + buscar
-Route::get('/productos/{id}', [ProductoController::class, 'show']);     // Ver uno
-Route::post('/productos', [ProductoController::class, 'store']);       // Crear
-Route::put('/productos/{id}', [ProductoController::class, 'update']);   // Actualizar
-Route::delete('/productos/{id}', [ProductoController::class, 'destroy']); // Eliminar
+Route::post('/shopify/product', [ProductoController::class, 'createProduct']);
+Route::put('/shopify/productos/{id}', [ProductoController::class, 'updateProduct']);
+Route::post('/shopify/product/{id}/image', [ProductoController::class, 'uploadImage']);
+Route::get('/shopify/location', [ProductoController::class, 'listLocations']);
+Route::delete('/shopify/products/{id}', [ProductoController::class, 'deleteProduct']);
 
+
+Route::get('/inventory-levels/{inventory_item_id}', [ProductoController::class, 'getInventoryLevels']);
 
 
 //rutas del api estado de pedidos
