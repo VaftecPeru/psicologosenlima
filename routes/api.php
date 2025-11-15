@@ -27,6 +27,8 @@ Route::post('/shopify/product/{id}/image', [ProductoController::class, 'uploadIm
 Route::get('/shopify/location', [ProductoController::class, 'listLocations']);
 Route::delete('/shopify/products/{id}', [ProductoController::class, 'deleteProduct']);
 
+Route::post('/upload-video-only', [ProductoController::class, 'uploadVideoOnly']); // Ruta para subir solo el video
+Route::post('/associate-video-to-product', [ProductoController::class, 'associateVideoToProduct']); // Ruta para asociar
 
 Route::get('/inventory-levels/{inventory_item_id}', [ProductoController::class, 'getInventoryLevels']);
 
