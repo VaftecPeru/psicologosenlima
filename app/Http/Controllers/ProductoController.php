@@ -69,7 +69,10 @@ class ProductoController extends Controller
             'precio'           => 'required_without:variantes|numeric|min:0',
             'cantidad'         => 'required_without:variantes|integer|min:0',
             'estado'           => 'nullable|string|max:50',
-            'multimedia'       => 'nullable|image|max:4096',
+            // 🔥 CAMBIO CLAVE: Cambiamos 'multimedia' por 'product_medias' (el array del frontend)
+            'product_medias'      => 'nullable|array',
+            // El frontend envía los archivos uno a uno.
+            'product_medias.*'    => 'required|file|max:102400',
             'sku' => 'nullable|string|max:255',
             'variantes'        => 'nullable|array',
             'variantes.*.option1'     => 'required_with:variantes|string',
@@ -177,10 +180,75 @@ class ProductoController extends Controller
             }
         }
 
-        // Subir foto principal (si existe)
-        if ($request->hasFile('multimedia')) {
-            $this->uploadImageToProduct($request->file('multimedia'), $product['id'], $config);
+        $productGid = $product['admin_graphql_api_id']; // Necesitamos el GID para asociar
+
+        // 1. Obtener los archivos (esto es lo que el frontend envió)
+        $mediaFiles = $request->file('product_medias') ?? [];
+        $resourceUrls = [];
+
+        foreach ($mediaFiles as $mediaFile) {
+            if (!$mediaFile) {
+                continue;
+            }
+
+            $mimeType = $mediaFile->getMimeType();
+
+            try {
+                if (str_starts_with($mimeType, 'video/')) {
+                    // Creamos un request temporal solo con el archivo de video
+                    $videoRequest = new Request();
+                    $videoRequest->files->set('video', $mediaFile); // ← Así sí lo reconoce como UploadedFile
+
+                    $uploadResponse = $this->uploadVideoOnly($videoRequest);
+                    $resourceUrl = $uploadResponse->getData()->resource_url ?? null;
+
+                    if ($resourceUrl) {
+                        $resourceUrls[] = $resourceUrl;
+                    } else {
+                        Log::warning('Video no subió correctamente', ['file' => $mediaFile->getClientOriginalName()]);
+                    }
+                } elseif (str_starts_with($mimeType, 'image/')) {
+                    $imageRequest = new Request();
+                    $imageRequest->files->set('image', $mediaFile);
+
+                    $uploadResponse = $this->uploadImageOnly($imageRequest);
+                    $resourceUrl = $uploadResponse->getData()->resource_url ?? null;
+
+                    if ($resourceUrl) {
+                        $resourceUrls[] = $resourceUrl;
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Error en subida por etapas de producto GID: ' . $productGid . ' | Error: ' . $e->getMessage());
+                // Puedes optar por continuar o fallar aquí. Por simplicidad, continuamos.
+            }
         }
+
+        // 2. Asociar todas las resourceUrls al producto
+        if (!empty($resourceUrls)) {
+            foreach ($resourceUrls as $index => $resourceUrl) {
+                if (!$resourceUrl) continue;
+
+                $originalFile = $mediaFiles[$index];
+                $isVideo = str_starts_with($originalFile->getMimeType(), 'video/');
+
+                if ($isVideo) {
+                    $this->attachVideoToProduct(new Request([
+                        'product_id' => $productGid,
+                        'video_resource_url' => $resourceUrl,
+                    ]));
+                } else {
+                    $this->attachImageToProduct(new Request([
+                        'product_id' => $productGid,
+                        'image_resource_url' => $resourceUrl,
+                    ]));
+                }
+            }
+        }
+
+        // -----------------------------------------------------
+        // FIN de la Multimedia General
+        // -----------------------------------------------------
 
         // Subir foto por variante (si existe)
         if (!empty($data['variantes'])) {
@@ -311,24 +379,24 @@ class ProductoController extends Controller
         $videoFile = $request->file('video');
 
         try {
-            // 1️⃣ Crear staged upload target
+            // 1️⃣ Crear staged upload target (Esto se queda igual)
             $stagedUploadMutation = [
                 'query' => '
-        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-            stagedUploadsCreate(input: $input) {
-                stagedTargets {
-                    url
-                    resourceUrl
-                    parameters { name value }
+            mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+                stagedUploadsCreate(input: $input) {
+                    stagedTargets {
+                        url
+                        resourceUrl
+                        parameters { name value }
+                    }
+                    userErrors { field message }
                 }
-                userErrors { field message }
-            }
-        }',
+            }',
                 'variables' => [
                     'input' => [[
                         'filename' => $videoFile->getClientOriginalName(),
                         'mimeType' => $videoFile->getMimeType(),
-                        'fileSize' => (string) $videoFile->getSize(), // ⚠️ string
+                        'fileSize' => (string) $videoFile->getSize(),
                         'resource' => 'VIDEO',
                     ]]
                 ]
@@ -350,13 +418,10 @@ class ProductoController extends Controller
                 return response()->json(['success' => false, 'step' => 'stagedUploadsCreate', 'error' => 'No se pudo crear target', 'full_response' => $data], 500);
             }
 
-            // 2️⃣ Subir archivo al URL temporal - Corregido: estructura como array de partes
+            // 2️⃣ Subir archivo al URL temporal (Esto se queda igual)
             $multipartData = [];
             foreach ($stagedTarget['parameters'] as $param) {
-                $multipartData[] = [
-                    'name' => $param['name'],
-                    'contents' => $param['value'],
-                ];
+                $multipartData[] = ['name' => $param['name'], 'contents' => $param['value']];
             }
             $multipartData[] = [
                 'name' => 'file',
@@ -369,44 +434,81 @@ class ProductoController extends Controller
                 return response()->json(['success' => false, 'step' => 'upload_to_target', 'error' => $uploadResponse->body()], 500);
             }
 
-            // 3️⃣ Registrar el vídeo con fileCreate
-            $fileCreateMutation = [
-                'query' => '
-        mutation fileCreate($files: [FileCreateInput!]!) {
-            fileCreate(files: $files) {
-                files { id fileStatus }
-                userErrors { field message }
-            }
-        }',
-                'variables' => [
-                    'files' => [[
-                        'originalSource' => $stagedTarget['resourceUrl'],
-                        'contentType' => 'VIDEO'
-                    ]]
-                ]
-            ];
+            // 3️⃣ ¡ELIMINAMOS EL PASO 'fileCreate' POR COMPLETO!
 
-            $fileResponse = Http::withHeaders([
-                'X-Shopify-Access-Token' => $config['accessToken'],
-                'Content-Type' => 'application/json'
-            ])->post("https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json", $fileCreateMutation);
-
-            $fileData = $fileResponse->json();
-            $fileErrors = $fileData['data']['fileCreate']['userErrors'] ?? [];
-            if (!empty($fileErrors)) {
-                return response()->json(['success' => false, 'step' => 'fileCreate', 'error' => $fileErrors, 'full_response' => $fileData], 500);
-            }
-
-            // Return the resourceUrl for later association
+            // Devolvemos SOLO el resourceUrl, que es lo que importa
             return response()->json([
                 'success' => true,
-                'resource_url' => $stagedTarget['resourceUrl'],
-                'file_data' => $fileData['data']['fileCreate']
+                'resource_url' => $stagedTarget['resourceUrl'], // <-- Esto es lo único que necesita el frontend
             ]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'step' => 'exception', 'error' => $e->getMessage()], 500);
         }
     }
+
+    public function attachVideoToProduct(Request $request): JsonResponse
+    {
+        $request->validate([
+            'product_id' => 'required|string',
+            // 'video_file_id' => 'required|string'         // <-- ANTES
+            'video_resource_url' => 'required|string|url'  // <-- AHORA
+        ]);
+
+        $productGid = $request->input('product_id');
+        // $videoFileGid = $request->input('video_file_id');      // <-- ANTES
+        $videoResourceUrl = $request->input('video_resource_url'); // <-- AHORA
+
+        $config = $this->getShopifyConfig();
+
+        $mutation = [
+            'query' => '
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+            productCreateMedia(productId: $productId, media: $media) {
+                media {
+                    ... on Video { id status alt }
+                }
+                mediaUserErrors { field message }
+                userErrors { field message }
+            }
+        }
+        ',
+            'variables' => [
+                'productId' => $productGid,
+                'media' => [
+                    [
+                        // 'originalSource' => $videoFileGid,   // ¡¡AQUÍ ESTABA EL ERROR!!
+                        'originalSource' => $videoResourceUrl,  // <-- ASÍ ES CORRECTO
+                        'mediaContentType' => 'VIDEO',
+                        'alt' => 'Video del producto'
+                    ]
+                ]
+            ]
+        ];
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $config['accessToken'],
+            'Content-Type' => 'application/json'
+        ])->post("https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json", $mutation);
+
+        $data = $response->json();
+        $mediaErrors = $data['data']['productCreateMedia']['mediaUserErrors'] ?? [];
+        $userErrors  = $data['data']['productCreateMedia']['userErrors'] ?? [];
+
+        if (!empty($mediaErrors) || !empty($userErrors)) {
+            return response()->json([
+                'success' => false,
+                'error' => $mediaErrors + $userErrors,
+                'full_response' => $data
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'media' => $data['data']['productCreateMedia']['media']
+        ]);
+    }
+
+
     public function associateVideoToProduct(Request $request): JsonResponse
     {
         $request->validate([
@@ -841,5 +943,441 @@ class ProductoController extends Controller
         } else {
             Log::warning("Producto con shopify_product_id {$shopifyProductId} no encontrado en BD local.");
         }
+    }
+
+    public function getProductImages($productId): JsonResponse
+    {
+        $config = $this->getShopifyConfig();
+
+        $url = "https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/products/{$productId}/images.json";
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+            ])->get($url);
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => $response->json(),
+                ], $response->status());
+            }
+
+            $images = $response->json()['images'] ?? [];
+
+            return response()->json([
+                'success' => true,
+                'product_id' => $productId,
+                'count' => count($images),
+                'images' => $images,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getAllProductMedia($productId): JsonResponse
+    {
+        $config = $this->getShopifyConfig();
+
+        // Shopify GraphQL requiere el GID
+        $gid = "gid://shopify/Product/{$productId}";
+
+        $graphqlQuery = [
+            'query' => "
+            query {
+                product(id: \"{$gid}\") {
+                    media(first: 100) {
+                        edges {
+                            node {
+                                id
+                                alt
+                                __typename
+                                mediaContentType
+                                
+                                
+                                
+
+                                ... on MediaImage {
+                                    image {
+                                        url
+                                        width
+                                        height
+                                    }
+                                }
+
+                                ... on Video {
+                                    sources {
+                                        url
+                                        mimeType
+                                    }
+                                }
+
+                                ... on ExternalVideo {
+                                    embedUrl
+                                }
+
+                                ... on Model3d {
+                                    sources {
+                                        url
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "
+        ];
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+                'Content-Type' => 'application/json',
+            ])->post(
+                "https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json",
+                $graphqlQuery
+            );
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $response->json(),
+                ], $response->status());
+            }
+
+            // Extraer los media
+            $edges = $response->json()['data']['product']['media']['edges'] ?? [];
+            $media = array_map(fn($item) => $item["node"], $edges);
+
+            return response()->json([
+                'success' => true,
+                'count' => count($media),
+                'media' => $media
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function uploadImageOnly(Request $request): JsonResponse
+    {
+        $request->validate([
+            'image' => 'required|file|image|max:10240', // Imagen, max 10MB
+        ]);
+
+        $config = $this->getShopifyConfig();
+        $imageFile = $request->file('image');
+
+        try {
+            // 1️⃣ Crear staged upload target (GraphQL)
+            $stagedUploadMutation = [
+                'query' => '
+        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+            stagedUploadsCreate(input: $input) {
+                stagedTargets {
+                    url
+                    resourceUrl
+                    parameters { name value }
+                }
+                userErrors { field message }
+            }
+        }',
+                'variables' => [
+                    'input' => [[
+                        'filename' => $imageFile->getClientOriginalName(),
+                        'mimeType' => $imageFile->getMimeType(),
+                        'fileSize' => (string) $imageFile->getSize(),
+                        'resource' => 'IMAGE',
+                        'httpMethod' => 'POST', // Genera target para POST multipart
+                    ]]
+                ]
+            ];
+
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+                'Content-Type' => 'application/json'
+            ])->post("https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json", $stagedUploadMutation);
+
+            $data = $response->json();
+            $userErrors = $data['data']['stagedUploadsCreate']['userErrors'] ?? [];
+
+            if (!empty($userErrors)) {
+                return response()->json(['success' => false, 'step' => 'stagedUploadsCreate', 'error' => $userErrors, 'full_response' => $data], 500);
+            }
+
+            $stagedTarget = $data['data']['stagedUploadsCreate']['stagedTargets'][0] ?? null;
+
+            if (!$stagedTarget) {
+                return response()->json(['success' => false, 'step' => 'stagedUploadsCreate', 'error' => 'No se pudo crear target', 'full_response' => $data], 500);
+            }
+
+            // 2️⃣ Subir archivo al URL temporal (SOLUCIÓN CRÍTICA PARA "FIRMA ROTA")
+            $multipartData = [];
+
+            // 2a. Añadir parámetros de la firma (policy, key, signature, etc.)
+            foreach ($stagedTarget['parameters'] as $param) {
+                $multipartData[] = ['name' => $param['name'], 'contents' => $param['value']];
+            }
+
+            // 2b. Añadir el archivo BINARIO, FORZANDO LA OMISIÓN DEL Content-Type
+            $fileHandle = fopen($imageFile->path(), 'r');
+            $multipartData[] = [
+                'name' => 'file',
+                'contents' => $fileHandle,
+                // 🔥 Quitar 'filename' para evitar que Guzzle infiera y añada Content-Type, previniendo la ruptura de la firma.
+                'headers' => [],
+            ];
+
+            $uploadResponse = Http::asMultipart()->post($stagedTarget['url'], $multipartData);
+
+            if (!$uploadResponse->successful()) {
+                // Manejo de error de GCS/S3 (normalmente XML)
+                $sanitizedError = $uploadResponse->body();
+                Log::error("GCS Image Upload Error: " . $sanitizedError);
+                return response()->json([
+                    'success' => false,
+                    'step' => 'upload_to_target',
+                    'error' => 'Error de subida a GCS/S3 (Firma Rota).',
+                    'gcs_response_snippet' => $sanitizedError
+                ], 500);
+            }
+
+            // 🔥 Cierra el handle para evitar leaks
+            fclose($fileHandle);
+
+            // 3️⃣ Devolvemos SOLO el resourceUrl
+            return response()->json([
+                'success' => true,
+                'resource_url' => $stagedTarget['resourceUrl'],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Excepción en uploadImageOnly: ' . $e->getMessage());
+            return response()->json(['success' => false, 'step' => 'exception', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Asocia la imagen subida (resourceUrl) al producto usando GraphQL.
+     * (Paso 2 del flujo de Staged Uploads)
+     */
+    public function attachImageToProduct(Request $request): JsonResponse
+    {
+        $request->validate([
+            'product_id' => 'required|string', // El GID del producto
+            'image_resource_url' => 'required|string|url' // El resourceUrl de la subida temporal
+        ]);
+
+        $productGid = $request->input('product_id');
+        $imageResourceUrl = $request->input('image_resource_url');
+
+        $config = $this->getShopifyConfig();
+
+        $mutation = [
+            'query' => '
+        mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+            productCreateMedia(productId: $productId, media: $media) {
+                media {
+                    ... on MediaImage { id image { url } } # Tipo de respuesta para imagen
+                }
+                mediaUserErrors { field message }
+                userErrors { field message }
+            }
+        }
+        ',
+            'variables' => [
+                'productId' => $productGid,
+                'media' => [
+                    [
+                        'originalSource' => $imageResourceUrl, // resourceUrl subido
+                        'mediaContentType' => 'IMAGE', // 🔥 CAMBIO CLAVE (Antes VIDEO)
+                        'alt' => 'Imagen del producto'
+                    ]
+                ]
+            ]
+        ];
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $config['accessToken'],
+            'Content-Type' => 'application/json'
+        ])->post("https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json", $mutation);
+
+        // 🔥 Agrega chequeo de status HTTP primero
+        if (!$response->successful()) {
+            $body = $response->body();
+            Log::error('GraphQL HTTP error in attachImageToProduct: ' . $body);
+            return response()->json([
+                'success' => false,
+                'error' => 'Error HTTP en GraphQL: ' . $response->status(),
+                'full_response' => $body
+            ], $response->status());
+        }
+
+        $data = $response->json();
+
+        // 🔥 Agrega manejo de errores top-level de GraphQL (antes de acceder a 'data')
+        if (isset($data['errors'])) {
+            Log::error('GraphQL errors in attachImageToProduct: ' . json_encode($data['errors']));
+            return response()->json([
+                'success' => false,
+                'error' => $data['errors'],
+                'full_response' => $data
+            ], 500);
+        }
+
+        if (!isset($data['data'])) {
+            Log::error('GraphQL sin data in attachImageToProduct: ' . json_encode($data));
+            return response()->json([
+                'success' => false,
+                'error' => 'Respuesta GraphQL sin data',
+                'full_response' => $data
+            ], 500);
+        }
+
+        $mediaErrors = $data['data']['productCreateMedia']['mediaUserErrors'] ?? [];
+        $userErrors  = $data['data']['productCreateMedia']['userErrors'] ?? [];
+
+        if (!empty($mediaErrors) || !empty($userErrors)) {
+            Log::error('Error asociando imagen: ' . json_encode($mediaErrors + $userErrors));
+            return response()->json([
+                'success' => false,
+                'error' => $mediaErrors + $userErrors,
+                'full_response' => $data
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'media' => $data['data']['productCreateMedia']['media']
+        ]);
+    }
+
+
+    /**
+     * Elimina un medio (imagen/video) del producto
+     */
+    public function deleteProductMedia(Request $request): JsonResponse
+    {
+        $request->validate([
+            'product_id' => 'required|string', // GID del producto
+            'media_id'   => 'required|string', // GID del medio (ej: gid://shopify/MediaImage/1234567890)
+        ]);
+
+        $productGid = $request->input('product_id');
+        $mediaId    = $request->input('media_id');
+
+        $config = $this->getShopifyConfig();
+
+        $mutation = [
+            'query' => '
+        mutation productDeleteMedia($mediaIds: [ID!]!, $productId: ID!) {
+            productDeleteMedia(mediaIds: $mediaIds, productId: $productId) {
+                deletedMediaIds
+                userErrors { field message }
+            }
+        }',
+            'variables' => [
+                'productId' => $productGid,
+                'mediaIds'  => [$mediaId]
+            ]
+        ];
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $config['accessToken'],
+            'Content-Type' => 'application/json'
+        ])->post("https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json", $mutation);
+
+        if (!$response->successful()) {
+            Log::error('GraphQL HTTP error in deleteProductMedia: ' . $response->body());
+            return response()->json(['success' => false, 'error' => 'Error HTTP en GraphQL'], 500);
+        }
+
+        $data = $response->json();
+
+        if (isset($data['errors'])) {
+            Log::error('GraphQL errors in deleteProductMedia: ' . json_encode($data['errors']));
+            return response()->json(['success' => false, 'error' => $data['errors']], 500);
+        }
+
+        $userErrors = $data['data']['productDeleteMedia']['userErrors'] ?? [];
+
+        if (!empty($userErrors)) {
+            Log::error('Error eliminando medio: ' . json_encode($userErrors));
+            return response()->json(['success' => false, 'error' => $userErrors], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'deleted_media_id' => $mediaId,
+            'message' => 'Medio eliminado correctamente'
+        ]);
+    }
+    public function setMediaAsFirst(Request $request): JsonResponse
+    {
+        $request->validate([
+            'product_id' => 'required|string', // GID del producto
+            'media_id'   => 'required|string', // GID del medio (Completo, no numérico)
+        ]);
+
+        $productGid = $request->input('product_id');
+        $mediaGid   = $request->input('media_id'); // ← NO LO MODIFICAMOS
+
+        $config = $this->getShopifyConfig();
+
+        $mutation = [
+            'query' => '
+            mutation productReorderMedia($id: ID!, $moves: [MoveInput!]!) {
+                productReorderMedia(id: $id, moves: $moves) {
+                    mediaUserErrors { field message }
+                    userErrors { field message }
+                    job { id }
+                }
+            }',
+            'variables' => [
+                'id' => $productGid,
+                'moves' => [
+                    [
+                        'id' => $mediaGid,     // ← GID COMPLETO, NO NÚMERO
+                        'newPosition' => "0"   // ← STRING
+                    ]
+                ]
+            ]
+        ];
+
+        $response = Http::withHeaders([
+            'X-Shopify-Access-Token' => $config['accessToken'],
+            'Content-Type' => 'application/json'
+        ])->post("https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json", $mutation);
+
+        if (!$response->successful()) {
+            Log::error('GraphQL HTTP error in setMediaAsFirst: ' . $response->body());
+            return response()->json(['success' => false, 'error' => 'Error HTTP en GraphQL'], 500);
+        }
+
+        $data = $response->json();
+
+        if (isset($data['errors'])) {
+            Log::error('GraphQL errors in setMediaAsFirst: ' . json_encode($data['errors']));
+            return response()->json(['success' => false, 'error' => $data['errors']], 500);
+        }
+
+        $mediaErrors = $data['data']['productReorderMedia']['mediaUserErrors'] ?? [];
+        $userErrors  = $data['data']['productReorderMedia']['userErrors'] ?? [];
+
+        if (!empty($mediaErrors) || !empty($userErrors)) {
+            Log::error('Error reordenando medio: ' . json_encode($mediaErrors + $userErrors));
+            return response()->json(['success' => false, 'error' => $mediaErrors + $userErrors], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Medio asignado como primero correctamente'
+        ]);
     }
 }
