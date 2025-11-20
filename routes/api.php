@@ -11,6 +11,7 @@ use App\Http\Controllers\PedidoExternoController;
 use App\Http\Controllers\PedidoInternoController;
 use App\Http\Controllers\UsuarioController;
 use App\Http\Controllers\ProductoController;
+use App\Http\Controllers\ColeccionesController;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -30,6 +31,9 @@ Route::delete('/shopify/products/{id}', [ProductoController::class, 'deleteProdu
 Route::post('/delete-product-media', [ProductoController::class, 'deleteProductMedia']);
 Route::post('/set-media-as-first', [ProductoController::class, 'setMediaAsFirst']);
 
+Route::get('/product/{id}/media', [ShopifyController::class, 'getProductMedia']);
+Route::get('/shopify/productos/media', [ShopifyController::class, 'getAllProductsMedia']);
+
 Route::post('/upload-video-only', [ProductoController::class, 'uploadVideoOnly']); // Ruta para subir solo el video
 Route::post('/attach-video-to-product', [ProductoController::class, 'attachVideoToProduct']);
 Route::get('/shopify/product/{id}/images', [ProductoController::class, 'getProductImages']);
@@ -40,6 +44,13 @@ Route::post('/attach-image-to-product', [ProductoController::class, 'attachImage
 Route::post('/associate-video-to-product', [ProductoController::class, 'associateVideoToProduct']); // Ruta para asociar
 
 Route::get('/inventory-levels/{inventory_item_id}', [ProductoController::class, 'getInventoryLevels']);
+
+Route::get('/collections', [ColeccionesController::class, 'listCollections']);
+Route::post('/collections', [ColeccionesController::class, 'createCollection']);
+Route::put('/collections/{id}', [ColeccionesController::class, 'updateCollection']);
+Route::delete('/collections/{id}', [ColeccionesController::class, 'deleteCollection']); 
+Route::post('/collections/{id}/products', [ColeccionesController::class, 'addProductToCollection']);
+Route::delete('/collections/{id}/products/{productId}', [ColeccionesController::class, 'removeProductFromCollection']);
 
 
 //rutas del api estado de pedidos

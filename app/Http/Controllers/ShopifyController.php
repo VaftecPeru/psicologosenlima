@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\JsonResponse;
+
 
 class ShopifyController extends Controller
 {
@@ -123,6 +125,256 @@ class ShopifyController extends Controller
             return response()->json([
                 'error' => 'Error de conexión o inesperado',
                 'details' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function getShopifyConfig(): array
+    {
+        $shopDomain = env('SHOPIFY_STORE');
+        $accessToken = env('SHOPIFY_ACCESS_TOKEN');
+        $apiVersion = env('SHOPIFY_API_VERSION', '2025-10');
+
+        if (!$shopDomain || !$accessToken) {
+            abort(response()->json([
+                'success' => false,
+                'error' => 'Faltan variables en el archivo .env',
+            ], 500));
+        }
+
+        return compact('shopDomain', 'accessToken', 'apiVersion');
+    }
+
+    public function getProductMedia($productId): JsonResponse
+    {
+        $config = $this->getShopifyConfig();
+        $gid = "gid://shopify/Product/{$productId}";
+
+        $graphqlQuery = [
+            'query' => "
+        query {
+            product(id: \"{$gid}\") {
+                media(first: 1) { 
+                    edges {
+                        node {
+                            id
+                            __typename
+                            mediaContentType
+
+                            ... on MediaImage {
+                                image {
+                                    url
+                                    width
+                                    height
+                                }
+                            }
+
+                            ... on Video {
+                                sources {
+                                    url
+                                    mimeType
+                                }
+                            }
+
+                            ... on ExternalVideo {
+                                embedUrl
+                            }
+
+                            ... on Model3d {
+                                sources { url }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "
+        ];
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+                'Content-Type' => 'application/json',
+            ])->post(
+                "https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json",
+                $graphqlQuery
+            );
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $response->json(),
+                ], $response->status());
+            }
+
+            $edges = $response->json()['data']['product']['media']['edges'] ?? [];
+            $media = array_map(fn($item) => $item["node"], $edges);
+
+            return response()->json([
+                'success' => true,
+                'media' => $media
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+    public function getAllProductsMedia(): JsonResponse
+    {
+        $config = $this->getShopifyConfig();
+
+        $graphqlQuery = [
+            'query' => "
+            query {
+                products(first: 250) {
+                    nodes {
+                        id
+                        title
+                        productType
+                        media(first: 100) {
+                            edges {
+                                node {
+                                    id
+                                    alt
+                                    __typename
+                                    mediaContentType
+
+                                    ... on MediaImage {
+                                        image {
+                                            url
+                                            width
+                                            height
+                                        }
+                                    }
+
+                                    ... on Video {
+                                        preview {
+                                            image {
+                                                url(transform: { maxWidth: 100, maxHeight: 100 })
+                                            }
+                                        }
+                                        sources {
+                                            url
+                                            mimeType
+                                            format
+                                        }
+                                    }
+
+                                    ... on ExternalVideo {
+                                        embedUrl
+                                        preview {
+                                            image {
+                                                url
+                                            }
+                                        }
+                                    }
+
+                                    ... on Model3d {
+                                        preview {
+                                            image {
+                                                url
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        "
+        ];
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+                'Content-Type' => 'application/json',
+            ])->post(
+                "https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json",
+                $graphqlQuery
+            );
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $response->json(),
+                ], $response->status());
+            }
+
+            $nodes = $response->json()['data']['products']['nodes'] ?? [];
+            $productos = [];
+
+            foreach ($nodes as $p) {
+                $allMedia = [];
+
+                foreach ($p['media']['edges'] as $edge) {
+                    $node = $edge['node'];
+                    $media = null;
+
+                    if ($node['__typename'] === 'MediaImage' && $node['image']) {
+                        $media = [
+                            'id' => $node['id'], // <-- agregamos el ID de la media
+                            '__typename' => 'MediaImage',
+                            'image' => [
+                                'url' => $node['image']['url']
+                            ]
+                        ];
+                    }
+
+                    if ($node['__typename'] === 'Video') {
+                        $previewImage = $node['preview']['image']['url'] ?? null;
+
+                        $media = [
+                            'id' => $node['id'],
+                            '__typename' => 'Video',
+                            'preview' => [
+                                'image' => [
+                                    'url' => $previewImage
+                                ]
+                            ],
+                            'sources' => $node['sources'] ?? []
+                        ];
+                    }
+
+                    if ($node['__typename'] === 'ExternalVideo') {
+                        $previewImage = $node['preview']['image']['url'] ?? null;
+                        $media = [
+                            'id' => $node['id'],
+                            '__typename' => 'ExternalVideo',
+                            'preview' => [
+                                'image' => [
+                                    'url' => $previewImage
+                                ]
+                            ],
+                            'embedUrl' => $node['embedUrl']
+                        ];
+                    }
+
+                    if ($media) {
+                        $allMedia[] = $media;
+                    }
+                }
+
+                $productos[] = [
+                    'id' => (int) str_replace('gid://shopify/Product/', '', $p['id']),
+                    'title' => $p['title'],
+                    'productType' => $p['productType'] ?? null,
+                    'media' => $allMedia // ahora devuelve todos los medios
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'total' => count($productos),
+                'productos' => $productos
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ], 500);
         }
     }

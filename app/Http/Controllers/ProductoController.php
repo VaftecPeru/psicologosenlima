@@ -69,10 +69,8 @@ class ProductoController extends Controller
             'precio'           => 'required_without:variantes|numeric|min:0',
             'cantidad'         => 'required_without:variantes|integer|min:0',
             'estado'           => 'nullable|string|max:50',
-            // 🔥 CAMBIO CLAVE: Cambiamos 'multimedia' por 'product_medias' (el array del frontend)
             'product_medias'      => 'nullable|array',
-            // El frontend envía los archivos uno a uno.
-            'product_medias.*'    => 'required|file|max:102400',
+            'product_medias.*' => 'file|mimes:jpeg,png,jpg,gif,webp,mp4,mov,quicktime|max:102400',
             'sku' => 'nullable|string|max:255',
             'variantes'        => 'nullable|array',
             'variantes.*.option1'     => 'required_with:variantes|string',
@@ -184,6 +182,10 @@ class ProductoController extends Controller
 
         // 1. Obtener los archivos (esto es lo que el frontend envió)
         $mediaFiles = $request->file('product_medias') ?? [];
+
+        if (empty($mediaFiles)) {
+            Log::warning('No se recibieron archivos en product_medias', $request->all());
+        }
         $resourceUrls = [];
 
         foreach ($mediaFiles as $mediaFile) {
@@ -568,6 +570,8 @@ class ProductoController extends Controller
             'estado'       => 'nullable|string|in:active,draft,archived',
             'location_id'  => 'nullable|string',
             'main_image'   => 'nullable|image|max:4096', // imagen principal
+            'product_medias'      => 'nullable|array',
+            'product_medias.*'    => 'nullable|file|max:102400',
             'variants'     => 'nullable|string', // JSON string desde frontend
             'option_names' => 'nullable|string',
             'variant_images.*' => 'nullable|image|max:4096', // array de imágenes por variante
@@ -712,6 +716,36 @@ class ProductoController extends Controller
         // Subir imagen principal si viene
         if ($request->hasFile('main_image')) {
             $this->uploadImageToProduct($request->file('main_image'), $id, $config);
+        }
+
+        $mediaFiles = $request->file('product_medias') ?? [];
+        $productGid = $updatedProduct['admin_graphql_api_id'];
+
+        foreach ($mediaFiles as $mediaFile) {
+            if (!$mediaFile) continue;
+            $mimeType = $mediaFile->getMimeType();
+
+            if (str_starts_with($mimeType, 'video/')) {
+                $videoRequest = new Request();
+                $videoRequest->files->set('video', $mediaFile);
+                $uploadResponse = $this->uploadVideoOnly($videoRequest);
+                $resourceUrl = $uploadResponse->getData()->resource_url ?? null;
+                if (!$resourceUrl) continue;
+                $this->attachVideoToProduct(new Request([
+                    'product_id' => $productGid,
+                    'video_resource_url' => $resourceUrl,
+                ]));
+            } elseif (str_starts_with($mimeType, 'image/')) {
+                $imageRequest = new Request();
+                $imageRequest->files->set('image', $mediaFile);
+                $uploadResponse = $this->uploadImageOnly($imageRequest);
+                $resourceUrl = $uploadResponse->getData()->resource_url ?? null;
+                if (!$resourceUrl) continue;
+                $this->attachImageToProduct(new Request([
+                    'product_id' => $productGid,
+                    'image_resource_url' => $resourceUrl,
+                ]));
+            }
         }
 
         // Actualizar inventario si hay variantes enviadas y location_id
