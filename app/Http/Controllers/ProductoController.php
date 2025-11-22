@@ -61,6 +61,7 @@ class ProductoController extends Controller
      */
     public function createProduct(Request $request): JsonResponse
     {
+        set_time_limit(300);
         $data = $request->validate([
             'titulo'           => 'required|string|max:255',
             'descripcion'      => 'nullable|string',
@@ -561,6 +562,7 @@ class ProductoController extends Controller
 
     public function updateProduct(Request $request, $id): JsonResponse
     {
+        set_time_limit(300);
         // Validación básica + variantes e imágenes
         $validator = Validator::make($request->all(), [
             'titulo'       => 'required|string|max:255',

@@ -33,6 +33,7 @@ Route::post('/set-media-as-first', [ProductoController::class, 'setMediaAsFirst'
 
 Route::get('/product/{id}/media', [ShopifyController::class, 'getProductMedia']);
 Route::get('/shopify/productos/media', [ShopifyController::class, 'getAllProductsMedia']);
+Route::get('/shopify/productos/media/first', [ShopifyController::class, 'getAllProductsMediaFirst']);
 
 Route::post('/upload-video-only', [ProductoController::class, 'uploadVideoOnly']); // Ruta para subir solo el video
 Route::post('/attach-video-to-product', [ProductoController::class, 'attachVideoToProduct']);
@@ -46,12 +47,16 @@ Route::post('/associate-video-to-product', [ProductoController::class, 'associat
 Route::get('/inventory-levels/{inventory_item_id}', [ProductoController::class, 'getInventoryLevels']);
 
 Route::get('/collections', [ColeccionesController::class, 'listCollections']);
+Route::get('/collections/{id}/count', [ColeccionesController::class, 'getCollectionProductCount']);
+Route::get('/collections/{id}', [ColeccionesController::class, 'getCollectionWithProductsMedia']);
 Route::post('/collections', [ColeccionesController::class, 'createCollection']);
 Route::put('/collections/{id}', [ColeccionesController::class, 'updateCollection']);
-Route::delete('/collections/{id}', [ColeccionesController::class, 'deleteCollection']); 
+Route::delete('/collections/{id}', [ColeccionesController::class, 'deleteCollection']);
 Route::post('/collections/{id}/products', [ColeccionesController::class, 'addProductToCollection']);
 Route::delete('/collections/{id}/products/{productId}', [ColeccionesController::class, 'removeProductFromCollection']);
 
+Route::get('/products/export', [ShopifyController::class, 'getExportProducts']);
+Route::post('/products/import', [ShopifyController::class, 'importProductsFull']);
 
 //rutas del api estado de pedidos
 Route::post('/estado-pedido', [PedidoEstadoController::class, 'actualizarEstado']);

@@ -64,6 +64,7 @@ class ColeccionesController extends Controller
             }
         }
 
+        /*
         // ---------------------------
         // 2. Listar Smart Collections
         // ---------------------------
@@ -81,13 +82,192 @@ class ColeccionesController extends Controller
             } else {
                 $collections['smart_error'] = $smartResponse->json();
             }
-        }
+        }*/
 
         return response()->json([
             'success' => true,
             'collections' => $collections,
         ]);
     }
+
+    public function getCollectionProductCount($collectionId)
+    {
+        $config = $this->getShopifyConfig();
+        $shop = $config['shopDomain'];
+        $version = $config['apiVersion'];
+        $token  = $config['accessToken'];
+
+        $headers = [
+            'X-Shopify-Access-Token' => $token
+        ];
+
+        // 1️⃣ Intentar como CUSTOM COLLECTION
+        $customUrl = "https://{$shop}/admin/api/{$version}/custom_collections/{$collectionId}.json?fields=products_count";
+
+        $customResponse = Http::withHeaders($headers)->get($customUrl);
+
+        if ($customResponse->successful() && isset($customResponse->json()['custom_collection'])) {
+            return response()->json([
+                'success' => true,
+                'type' => 'custom',
+                'collection_id' => $collectionId,
+                'count' => $customResponse->json()['custom_collection']['products_count'] ?? 0
+            ]);
+        }
+
+        // 2️⃣ Intentar como SMART COLLECTION
+        $smartUrl = "https://{$shop}/admin/api/{$version}/smart_collections/{$collectionId}.json?fields=products_count";
+
+        $smartResponse = Http::withHeaders($headers)->get($smartUrl);
+
+        if ($smartResponse->successful() && isset($smartResponse->json()['smart_collection'])) {
+            return response()->json([
+                'success' => true,
+                'type' => 'smart',
+                'collection_id' => $collectionId,
+                'count' => $smartResponse->json()['smart_collection']['products_count'] ?? 0
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'error' => 'No se pudo obtener la cantidad de productos (ni custom ni smart).'
+        ], 400);
+    }
+    public function getCollectionWithProductsMedia($collectionId)
+    {
+        $config = $this->getShopifyConfig();
+
+        $graphqlQuery = [
+            'query' => "
+        query {
+          collection(id: \"gid://shopify/Collection/{$collectionId}\") {
+            id
+            title
+            descriptionHtml
+            image {
+              url
+              altText
+              width
+              height
+            }
+            products(first: 250) {
+              nodes {
+                id
+                title
+                productType
+                media(first: 1) {
+                  edges {
+                    node {
+                      __typename
+                      ... on MediaImage {
+                        image { url width height }
+                      }
+                      ... on Video {
+                        preview { image { url } }
+                        sources { url mimeType format }
+                      }
+                      ... on ExternalVideo {
+                        embedUrl
+                        preview { image { url } }
+                      }
+                      ... on Model3d {
+                        preview { image { url } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }"
+        ];
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+                'Content-Type' => 'application/json',
+            ])->post(
+                "https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json",
+                $graphqlQuery
+            );
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $response->json(),
+                ], $response->status());
+            }
+
+            $collectionData = $response->json()['data']['collection'] ?? null;
+
+            if (!$collectionData) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No se encontró la colección.'
+                ], 404);
+            }
+
+            // Procesar productos para dejar solo la primera media
+            $products = [];
+            foreach ($collectionData['products']['nodes'] as $p) {
+                $firstMedia = null;
+                $edge = $p['media']['edges'][0] ?? null;
+
+                if ($edge) {
+                    $node = $edge['node'];
+                    switch ($node['__typename']) {
+                        case 'MediaImage':
+                            $firstMedia = ['__typename' => 'MediaImage', 'image' => $node['image']];
+                            break;
+                        case 'Video':
+                            $firstMedia = ['__typename' => 'Video', 'preview' => $node['preview'], 'sources' => $node['sources']];
+                            break;
+                        case 'ExternalVideo':
+                            $firstMedia = ['__typename' => 'ExternalVideo', 'embedUrl' => $node['embedUrl'], 'preview' => $node['preview']];
+                            break;
+                        case 'Model3d':
+                            $firstMedia = ['__typename' => 'Model3d', 'preview' => $node['preview']];
+                            break;
+                    }
+                }
+
+                $products[] = [
+                    'id' => (int) str_replace('gid://shopify/Product/', '', $p['id']),
+                    'title' => $p['title'],
+                    'productType' => $p['productType'] ?? null,
+                    'media' => $firstMedia ? [$firstMedia] : []
+                ];
+            }
+
+            // Incluir la imagen principal de la colección
+            $collectionImage = $collectionData['image'] ?? null;
+
+            return response()->json([
+                'success' => true,
+                'collection' => [
+                    'id' => (int) str_replace('gid://shopify/Collection/', '', $collectionData['id']),
+                    'title' => $collectionData['title'],
+                    'descriptionHtml' => $collectionData['descriptionHtml'] ?? null,
+                    'image' => $collectionImage ? [
+                        'url' => $collectionImage['url'] ?? null,
+                        'altText' => $collectionImage['altText'] ?? null,
+                        'width' => $collectionImage['width'] ?? null,
+                        'height' => $collectionImage['height'] ?? null,
+                    ] : null,
+                ],
+                'total_products' => count($products),
+                'products' => $products
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
+    }
+
 
     /**
      * Crear una colección manual (Custom Collection)
@@ -306,18 +486,6 @@ class ColeccionesController extends Controller
         } catch (\Exception $e) {
             Log::error("Error eliminando imagen colección: " . $e->getMessage());
         }
-    }
-
-    // Helper para parsear Link header
-    private function parseLinkHeader($linkHeader)
-    {
-        $links = [];
-        foreach (explode(',', $linkHeader) as $part) {
-            if (preg_match('/<[^>]+page_info=([^&>]+)[^>]*>; rel="([^"]+)"/', $part, $matches)) {
-                $links[$matches[2]] = $matches[1];
-            }
-        }
-        return $links;
     }
 
     public function addProductToCollection(Request $request, $collectionId)
