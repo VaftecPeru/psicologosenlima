@@ -12,6 +12,7 @@ use App\Http\Controllers\PedidoInternoController;
 use App\Http\Controllers\UsuarioController;
 use App\Http\Controllers\ProductoController;
 use App\Http\Controllers\ColeccionesController;
+use App\Http\Controllers\PedidosController;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -21,6 +22,13 @@ Route::get('/shopify/orders', [ShopifyController::class, 'getOrders']);
 Route::get('/shopify/orders/{orderId}.json', [ShopifyController::class, 'getOrderById']);
 Route::get('/shopify/products', [ShopifyController::class, 'getProducts']);
 Route::get('/shopify/products/{orderId}.json', [ShopifyController::class, 'getProductById']);
+
+
+Route::post('/shopify/orders', [PedidosController::class, 'store']);
+Route::get('/shopify/orders/{id}', [PedidosController::class, 'show']);
+Route::put('/shopify/orders/{id}', [PedidosController::class, 'update']);
+Route::post('/shopify/orders/{id}/cancel', [PedidosController::class, 'cancel']);
+
 
 Route::post('/shopify/product', [ProductoController::class, 'createProduct']);
 Route::put('/shopify/productos/{id}', [ProductoController::class, 'updateProduct']);
