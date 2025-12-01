@@ -23,7 +23,6 @@ Route::get('/shopify/orders/{orderId}.json', [ShopifyController::class, 'getOrde
 Route::get('/shopify/products', [ShopifyController::class, 'getProducts']);
 Route::get('/shopify/products/{orderId}.json', [ShopifyController::class, 'getProductById']);
 
-
 Route::post('/shopify/orders', [PedidosController::class, 'store']);
 Route::get('/shopify/orders/{id}', [PedidosController::class, 'show']);
 Route::put('/shopify/orders/{id}', [PedidosController::class, 'update']);
@@ -49,6 +48,9 @@ Route::get('/shopify/product/{id}/images', [ProductoController::class, 'getProdu
 Route::get('/shopify/product/{id}/media', [ProductoController::class, 'getAllProductMedia']);
 Route::post('/upload-image-only', [ProductoController::class, 'uploadImageOnly']);
 Route::post('/attach-image-to-product', [ProductoController::class, 'attachImageToProduct']);
+
+Route::put('/pedidos/{id}/update-note', [PedidosController::class, 'updateNote']);
+Route::put('/pedidos/{id}/update-shipping-address', [PedidosController::class, 'updateShippingAddress']);
 
 Route::post('/associate-video-to-product', [ProductoController::class, 'associateVideoToProduct']); // Ruta para asociar
 
