@@ -462,29 +462,33 @@ class PedidosController extends Controller
         return response()->json($response->json());
     }
 
+    // Editar notas y editar direccionde envio
+
     public function updateNote(Request $request, $id)
     {
-        // Validamos solo el campo note
+        $id = preg_replace('/[^0-9]/', '', $id);
+
         $validated = $request->validate([
             "note" => "nullable|string",
         ]);
 
         $data = [
             "order" => [
+                "id" => $id,
                 "note" => $validated["note"] ?? null,
             ]
         ];
 
         $response = Http::withHeaders([
             'X-Shopify-Access-Token' => $this->token,
-            'Content-Type' => 'application/json',
         ])->put("{$this->baseUrl}/orders/{$id}.json", $data);
 
         return response()->json($response->json(), $response->status());
     }
-
     public function updateShippingAddress(Request $request, $id)
     {
+        $id = preg_replace('/[^0-9]/', '', $id);
+
         $validated = $request->validate([
             "first_name" => "required|string",
             "last_name"  => "nullable|string",
@@ -500,6 +504,7 @@ class PedidosController extends Controller
 
         $data = [
             "order" => [
+                "id" => $id,
                 "shipping_address" => [
                     "first_name" => $validated["first_name"],
                     "last_name"  => $validated["last_name"] ?? "",
@@ -517,7 +522,7 @@ class PedidosController extends Controller
 
         $response = Http::withHeaders([
             'X-Shopify-Access-Token' => $this->token,
-            'Content-Type' => 'application/json',
+            'Content-Type' => 'application/json'
         ])->put("{$this->baseUrl}/orders/{$id}.json", $data);
 
         return response()->json($response->json(), $response->status());
