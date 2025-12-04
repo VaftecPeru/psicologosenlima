@@ -44,8 +44,10 @@ class PedidosController extends Controller
             "shipping_address.address1"    => "required|string",
             "shipping_address.address2"    => "nullable|string",
             "shipping_address.city"        => "required|string",
-            "shipping_address.province"    => "nullable|string",
-            "shipping_address.country"     => "required|string",
+            "shipping_address.province"    => "nullable|string",  // Nombre, e.g., "Lima"
+            "shipping_address.province_code" => "nullable|string",  // Código, e.g., "LIM"
+            "shipping_address.country"     => "required|string",  // Nombre, e.g., "Peru"
+            "shipping_address.country_code" => "nullable|string",  // Código, e.g., "PE"
             "shipping_address.zip"         => "nullable|string",
             "shipping_address.phone"       => "nullable|string",
             "note" => "nullable|string",
@@ -90,8 +92,10 @@ class PedidosController extends Controller
             "address1"   => $validated["shipping_address"]["address1"],
             "address2"   => $validated["shipping_address"]["address2"] ?? null,
             "city"       => $validated["shipping_address"]["city"],
-            "province"   => $validated["shipping_address"]["province"] ?? null,
-            "country"    => $validated["shipping_address"]["country"],
+            "province"   => $validated["shipping_address"]["province"] ?? null,  // Nombre aquí
+            "province_code" => $validated["shipping_address"]["province_code"] ?? null,  // Código aquí
+            "country"    => $validated["shipping_address"]["country"],  // Nombre aquí
+            "country_code" => $validated["shipping_address"]["country_code"] ?? null,  // Código aquí
             "zip"        => $validated["shipping_address"]["zip"] ?? null,
             "phone"      => $validated["shipping_address"]["phone"] ?? null
         ];
@@ -496,8 +500,10 @@ class PedidosController extends Controller
             "address1"   => "required|string",
             "address2"   => "nullable|string",
             "city"       => "required|string",
-            "province"   => "nullable|string",
-            "country"    => "required|string",
+            "province"   => "nullable|string",  // This should be the name, e.g., "Lima"
+            "province_code" => "nullable|string",  // Add this for the code, e.g., "LIM"
+            "country"    => "required|string",  // This should be the name, e.g., "Peru"
+            "country_code" => "nullable|string",  // Add this for the code, e.g., "PE"
             "zip"        => "nullable|string",
             "phone"      => "nullable|string",
         ]);
@@ -512,8 +518,10 @@ class PedidosController extends Controller
                     "address1"   => $validated["address1"],
                     "address2"   => $validated["address2"] ?? null,
                     "city"       => $validated["city"],
-                    "province"   => $validated["province"] ?? null,
-                    "country"    => $validated["country"],
+                    "province"   => $validated["province"] ?? null,  // Name here
+                    "province_code" => $validated["province_code"] ?? null,  // Code here
+                    "country"    => $validated["country"],  // Name here
+                    "country_code" => $validated["country_code"] ?? null,  // Code here
                     "zip"        => $validated["zip"] ?? null,
                     "phone"      => $validated["phone"] ?? null,
                 ]
