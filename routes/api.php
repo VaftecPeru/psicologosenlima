@@ -23,6 +23,9 @@ Route::get('/shopify/orders/{orderId}.json', [ShopifyController::class, 'getOrde
 Route::get('/shopify/products', [ShopifyController::class, 'getProducts']);
 Route::get('/shopify/products/{orderId}.json', [ShopifyController::class, 'getProductById']);
 
+
+Route::post('/shopify/crear-pedido', [PedidosController::class, 'crearPedido']);
+
 Route::post('/shopify/orders', [PedidosController::class, 'store']);
 Route::get('/shopify/orders/{id}', [PedidosController::class, 'show']);
 Route::put('/shopify/orders/{id}', [PedidosController::class, 'update']);

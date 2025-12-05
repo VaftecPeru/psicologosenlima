@@ -18,6 +18,111 @@ class PedidosController extends Controller
 
         $this->baseUrl = "https://{$store}/admin/api/{$version}";
     }
+    public function crearPedido(Request $request)
+    {
+        // Valores seguros para evitar nulls en Shopify
+        $firstName = $request->first_name ?? "Cliente";
+        $lastName  = $request->last_name ?? "";
+        $email     = $request->email ?? "cliente@example.com";
+        $phone     = $request->phone ?? "";
+        $address1  = $request->address1 ?? "";
+        $city      = $request->city ?? "";
+        $province  = $request->province ?? "";
+        $provinceCode = $request->province_code ?? "";
+        $country   = $request->country ?? "";
+        $countryCode = $request->country_code ?? "";
+        $zip       = $request->zip ?? "";
+
+        $payload = [
+            "order" => [
+                "email"    => $email,
+                "currency" => "USD",
+
+                // 🔥 PRODUCTOS
+                "line_items" => [
+                    [
+                        "variant_id" => $request->variant_id,
+                        "quantity"   => $request->cantidad ?? 1
+                    ]
+                ],
+
+                // 🔥 DATOS DEL CLIENTE
+                "customer" => [
+                    "first_name" => $firstName,
+                    "last_name"  => $lastName,
+                    "email"      => $email,
+                    "phone"      => $phone,
+                ],
+
+                // 🔥 DIRECCIÓN DE ENVÍO
+                "shipping_address" => [
+                    "first_name"     => $firstName,
+                    "last_name"      => $lastName,
+                    "address1"       => $address1,
+                    "phone"          => $phone,
+                    "city"           => $city,
+                    "province"       => $province,
+                    "province_code"  => $provinceCode,
+                    "country"        => $country,
+                    "country_code"   => $countryCode,
+                    "zip"            => $zip,
+                ],
+
+                // 🔥 DIRECCIÓN DE FACTURACIÓN (igual a envío)
+                "billing_address" => [
+                    "first_name"     => $firstName,
+                    "last_name"      => $lastName,
+                    "address1"       => $address1,
+                    "phone"          => $phone,
+                    "city"           => $city,
+                    "province"       => $province,
+                    "province_code"  => $provinceCode,
+                    "country"        => $country,
+                    "country_code"   => $countryCode,
+                    "zip"            => $zip,
+                ],
+
+                // 🔥 ENVÍO
+                "shipping_lines" => [
+                    [
+                        "title"  => "Standard Shipping",
+                        "price"  => "0.00",
+                        "code"   => "standard",
+                        "source" => "api"
+                    ]
+                ],
+
+                // 🔥 YA PAGADO
+                "financial_status" => "paid",
+
+                // EXTRA
+                "tags" => "web,api"
+            ]
+        ];
+
+        // PETICIÓN A SHOPIFY
+        $response = Http::withHeaders([
+            "X-Shopify-Access-Token" => $this->token,
+            "Content-Type" => "application/json"
+        ])->post("{$this->baseUrl}/orders.json", $payload);
+
+        if ($response->failed()) {
+            return response()->json([
+                "ok" => false,
+                "error" => $response->json()
+            ], 400);
+        }
+
+        return response()->json([
+            "ok" => true,
+            "order" => $response->json()
+        ]);
+    }
+
+
+
+
+
 
     public function show($id)
     {
