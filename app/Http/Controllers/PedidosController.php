@@ -18,27 +18,63 @@ class PedidosController extends Controller
 
         $this->baseUrl = "https://{$store}/admin/api/{$version}";
     }
+
     public function crearPedido(Request $request)
     {
-        // Valores seguros para evitar nulls en Shopify
+        // VALIDACIÓN
+        $request->validate([
+            "variant_id" => "required|numeric",
+            "cantidad" => "nullable|numeric",
+
+            "first_name" => "nullable|string",
+            "last_name" => "nullable|string",
+            "email" => "nullable|email",
+            "phone" => "nullable|string",
+
+            "address1" => "required|string",
+            "city" => "required|string",
+            "province" => "required|string",
+            "province_code" => "required|string",
+            "zip" => "required|string",
+
+            "country" => "required|string",
+            "country_code" => "required|string",
+
+            "shipping_title" => "required|string",
+            "shipping_price" => "required|string",
+            "shipping_code" => "required|string",
+
+            "tags" => "nullable|string"
+        ]);
+
+        // DATOS BASE
         $firstName = $request->first_name ?? "Cliente";
         $lastName  = $request->last_name ?? "";
         $email     = $request->email ?? "cliente@example.com";
         $phone     = $request->phone ?? "";
-        $address1  = $request->address1 ?? "";
-        $city      = $request->city ?? "";
-        $province  = $request->province ?? "";
-        $provinceCode = $request->province_code ?? "";
-        $country   = $request->country ?? "";
-        $countryCode = $request->country_code ?? "";
-        $zip       = $request->zip ?? "";
 
+        $tags = $request->tags ?? "web,api";
+
+        // DIRECCIÓN DEL FRONTEND (NO SE CAMBIA NADA)
+        $address = [
+            "first_name"     => $firstName,
+            "last_name"      => $lastName,
+            "address1"       => $request->address1,
+            "phone"          => $phone,
+            "city"           => $request->city,
+            "province"       => $request->province,
+            "province_code"  => $request->province_code,
+            "country"        => $request->country,       // ← VIENE DEL FRONTEND
+            "country_code"   => $request->country_code,  // ← VIENE DEL FRONTEND
+            "zip"            => $request->zip,
+        ];
+
+        // PAYLOAD SHOPIFY
         $payload = [
             "order" => [
-                "email"    => $email,
-                "currency" => "USD",
+                "email"           => $email,
+                "currency"        => "PEN",
 
-                // 🔥 PRODUCTOS
                 "line_items" => [
                     [
                         "variant_id" => $request->variant_id,
@@ -46,7 +82,6 @@ class PedidosController extends Controller
                     ]
                 ],
 
-                // 🔥 DATOS DEL CLIENTE
                 "customer" => [
                     "first_name" => $firstName,
                     "last_name"  => $lastName,
@@ -54,53 +89,25 @@ class PedidosController extends Controller
                     "phone"      => $phone,
                 ],
 
-                // 🔥 DIRECCIÓN DE ENVÍO
-                "shipping_address" => [
-                    "first_name"     => $firstName,
-                    "last_name"      => $lastName,
-                    "address1"       => $address1,
-                    "phone"          => $phone,
-                    "city"           => $city,
-                    "province"       => $province,
-                    "province_code"  => $provinceCode,
-                    "country"        => $country,
-                    "country_code"   => $countryCode,
-                    "zip"            => $zip,
-                ],
+                "shipping_address" => $address,
+                "billing_address"  => $address,
 
-                // 🔥 DIRECCIÓN DE FACTURACIÓN (igual a envío)
-                "billing_address" => [
-                    "first_name"     => $firstName,
-                    "last_name"      => $lastName,
-                    "address1"       => $address1,
-                    "phone"          => $phone,
-                    "city"           => $city,
-                    "province"       => $province,
-                    "province_code"  => $provinceCode,
-                    "country"        => $country,
-                    "country_code"   => $countryCode,
-                    "zip"            => $zip,
-                ],
-
-                // 🔥 ENVÍO
                 "shipping_lines" => [
                     [
-                        "title"  => "Standard Shipping",
-                        "price"  => "0.00",
-                        "code"   => "standard",
+                        "title"  => $request->shipping_title, // ← Empresa elegida en frontend
+                        "price"  => $request->shipping_price,
+                        "code"   => $request->shipping_code,
                         "source" => "api"
                     ]
                 ],
 
-                // 🔥 YA PAGADO
                 "financial_status" => "paid",
 
-                // EXTRA
-                "tags" => "web,api"
+                "tags" => $tags
             ]
         ];
 
-        // PETICIÓN A SHOPIFY
+        // PETICIÓN
         $response = Http::withHeaders([
             "X-Shopify-Access-Token" => $this->token,
             "Content-Type" => "application/json"
@@ -118,10 +125,6 @@ class PedidosController extends Controller
             "order" => $response->json()
         ]);
     }
-
-
-
-
 
 
     public function show($id)
