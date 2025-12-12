@@ -13,6 +13,8 @@ use App\Http\Controllers\UsuarioController;
 use App\Http\Controllers\ProductoController;
 use App\Http\Controllers\ColeccionesController;
 use App\Http\Controllers\PedidosController;
+use App\Http\Controllers\ShopifyAnalyticsController;
+
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -23,13 +25,15 @@ Route::get('/shopify/orders/{orderId}.json', [ShopifyController::class, 'getOrde
 Route::get('/shopify/products', [ShopifyController::class, 'getProducts']);
 Route::get('/shopify/products/{orderId}.json', [ShopifyController::class, 'getProductById']);
 
+Route::get('/analytics/metric', [ShopifyAnalyticsController::class, 'getMetric']);
 
 Route::post('/shopify/crear-pedido', [PedidosController::class, 'crearPedido']);
+Route::put('/shopify/actualizar/{id}', [PedidosController::class, 'actualizarPedido']);
+Route::post('/shopify/cancelar/{id}', [PedidosController::class, 'cancelarPedido']);
 
-Route::post('/shopify/orders', [PedidosController::class, 'store']);
-Route::get('/shopify/orders/{id}', [PedidosController::class, 'show']);
-Route::put('/shopify/orders/{id}', [PedidosController::class, 'update']);
-Route::post('/shopify/orders/{id}/cancel', [PedidosController::class, 'cancel']);
+
+Route::put('/pedidos/{id}/update-note', [PedidosController::class, 'updateNote']);
+Route::put('/pedidos/{id}/update-shipping-address', [PedidosController::class, 'updateShippingAddress']);
 
 
 Route::post('/shopify/product', [ProductoController::class, 'createProduct']);
@@ -44,6 +48,8 @@ Route::post('/set-media-as-first', [ProductoController::class, 'setMediaAsFirst'
 Route::get('/product/{id}/media', [ShopifyController::class, 'getProductMedia']);
 Route::get('/shopify/productos/media', [ShopifyController::class, 'getAllProductsMedia']);
 Route::get('/shopify/productos/media/first', [ShopifyController::class, 'getAllProductsMediaFirst']);
+Route::get('/shopify/variantes/media/first', [ShopifyController::class, 'getAllVariantsMediaFirst']);
+Route::post('/shopify/variantes/media', [ShopifyController::class, 'getVariantsImages']);
 
 Route::post('/upload-video-only', [ProductoController::class, 'uploadVideoOnly']); // Ruta para subir solo el video
 Route::post('/attach-video-to-product', [ProductoController::class, 'attachVideoToProduct']);
@@ -52,8 +58,6 @@ Route::get('/shopify/product/{id}/media', [ProductoController::class, 'getAllPro
 Route::post('/upload-image-only', [ProductoController::class, 'uploadImageOnly']);
 Route::post('/attach-image-to-product', [ProductoController::class, 'attachImageToProduct']);
 
-Route::put('/pedidos/{id}/update-note', [PedidosController::class, 'updateNote']);
-Route::put('/pedidos/{id}/update-shipping-address', [PedidosController::class, 'updateShippingAddress']);
 
 Route::post('/associate-video-to-product', [ProductoController::class, 'associateVideoToProduct']); // Ruta para asociar
 

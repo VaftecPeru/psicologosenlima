@@ -526,6 +526,267 @@ class ShopifyController extends Controller
         }
     }
 
+    public function getAllVariantsMediaFirst(): JsonResponse
+    {
+        $config = $this->getShopifyConfig();
+
+        $graphqlQuery = [
+            'query' => "
+                query {
+                    shop {
+                        currencyCode
+                    }
+                    products(first: 250) {
+                        nodes {
+                            id
+                            title
+                            productType
+                            
+                            # MEDIA GENERAL DEL PRODUCTO
+                            media(first: 1) {
+                                edges {
+                                    node {
+                                        id
+                                        __typename
+                                        ... on MediaImage {
+                                            image { url width height }
+                                        }
+                                        ... on Video {
+                                            preview { image { url } }
+                                            sources { url mimeType format }
+                                        }
+                                        ... on ExternalVideo {
+                                            embedUrl
+                                            preview { image { url } }
+                                        }
+                                        ... on Model3d {
+                                            preview { image { url } }
+                                        }
+                                    }
+                                }
+                            }
+
+                            # IMÁGENES DEL PRODUCTO (variante usa estas)
+                            images(first: 20) {
+                                edges {
+                                    node {
+                                        id
+                                        url
+                                        width
+                                        height
+                                    }
+                                }
+                            }
+
+                            # VARIANTES
+                            variants(first: 50) {
+                                edges {
+                                    node {
+                                        id
+                                        title
+                                        inventoryQuantity
+                                        price
+                                        image {
+                                            id
+                                            url
+                                            width
+                                            height
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            "
+        ];
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+                'Content-Type' => 'application/json',
+            ])->post(
+                "https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json",
+                $graphqlQuery
+            );
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $response->json(),
+                ], $response->status());
+            }
+
+            $data = $response->json()['data'];
+            $currency = $data['shop']['currencyCode'] ?? 'USD';
+            $nodes = $data['products']['nodes'] ?? [];
+            $productos = [];
+
+            foreach ($nodes as $p) {
+
+                // ----- MEDIA GENERAL DEL PRODUCTO -----
+                $firstMedia = null;
+                $edge = $p['media']['edges'][0] ?? null;
+
+                if ($edge) {
+                    $node = $edge['node'];
+
+                    switch ($node['__typename']) {
+                        case 'MediaImage':
+                            $firstMedia = [
+                                'id' => $node['id'],
+                                '__typename' => 'MediaImage',
+                                'image' => ['url' => $node['image']['url']]
+                            ];
+                            break;
+
+                        case 'Video':
+                            $firstMedia = [
+                                'id' => $node['id'],
+                                '__typename' => 'Video',
+                                'preview' => ['image' => ['url' => $node['preview']['image']['url'] ?? null]],
+                                'sources' => $node['sources'] ?? []
+                            ];
+                            break;
+
+                        case 'ExternalVideo':
+                            $firstMedia = [
+                                'id' => $node['id'],
+                                '__typename' => 'ExternalVideo',
+                                'preview' => ['image' => ['url' => $node['preview']['image']['url'] ?? null]],
+                                'embedUrl' => $node['embedUrl']
+                            ];
+                            break;
+
+                        case 'Model3d':
+                            $firstMedia = [
+                                'id' => $node['id'],
+                                '__typename' => 'Model3d',
+                                'preview' => ['image' => ['url' => $node['preview']['image']['url'] ?? null]]
+                            ];
+                            break;
+                    }
+                }
+
+                // ----- VARIANTES (cada una con su imagen si tiene) -----
+                $variantes = [];
+                foreach ($p['variants']['edges'] as $v) {
+                    $variant = $v['node'];
+
+                    $variantes[] = [
+                        'id' => (int) str_replace('gid://shopify/ProductVariant/', '', $variant['id']),
+                        'title' => $variant['title'],
+                        'stock' => $variant['inventoryQuantity'],
+                        'price' => $variant['price'],
+                        'currency' => $currency,
+                        'price_formatted' => $currency . ' ' . $variant['price'],
+                        'image' => $variant['image'] ? [
+                            'url' => $variant['image']['url'],
+                            'width' => $variant['image']['width'],
+                            'height' => $variant['image']['height']
+                        ] : null
+                    ];
+                }
+
+                $productos[] = [
+                    'id' => (int) str_replace('gid://shopify/Product/', '', $p['id']),
+                    'title' => $p['title'],
+                    'productType' => $p['productType'] ?? null,
+                    'currency' => $currency,
+                    'media' => $firstMedia ? [$firstMedia] : [],
+                    'variantes' => $variantes
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'total' => count($productos),
+                'productos' => $productos
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
+    }
+
+    public function getVariantsImages(Request $request): JsonResponse
+    {
+        $variantIds = $request->input('variantIds', []); // Obtenemos desde POST
+
+        $config = $this->getShopifyConfig();
+
+        if (empty($variantIds)) {
+            return response()->json([
+                'success' => true,
+                'images' => []
+            ], 200);
+        }
+
+        // Convertimos los IDs a formato GID de Shopify
+        $gidVariants = array_map(fn($id) => 'gid://shopify/ProductVariant/' . intval($id), $variantIds);
+
+        $graphqlQuery = [
+            'query' => '
+            query getVariants($ids: [ID!]!) {
+                nodes(ids: $ids) {
+                    ... on ProductVariant {
+                        id
+                        image {
+                            url
+                        }
+                    }
+                }
+            }
+        ',
+            'variables' => [
+                'ids' => $gidVariants
+            ]
+        ];
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['accessToken'],
+                'Content-Type' => 'application/json',
+            ])->post(
+                "https://{$config['shopDomain']}/admin/api/{$config['apiVersion']}/graphql.json",
+                $graphqlQuery
+            );
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $response->body(), // Mejor mostrar body completo
+                ], $response->status());
+            }
+
+            $nodes = $response->json()['data']['nodes'] ?? [];
+            $images = [];
+
+            foreach ($nodes as $node) {
+                if (!isset($node['id'])) continue;
+
+                $images[] = [
+                    'id' => (int) str_replace('gid://shopify/ProductVariant/', '', $node['id']),
+                    'image' => $node['image']['url'] ?? "/images/default-image.png"
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'images' => $images
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
+    }
+
     // Exportar data
 
     public function getExportProducts()
